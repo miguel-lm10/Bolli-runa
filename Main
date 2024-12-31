@@ -1,0 +1,200 @@
+import pygame
+import sys
+from gpiozero import Button
+from pynput.keyboard import Controller, Key
+import time
+
+# Initialize Pygame and Keyboard Controller
+pygame.init()
+keyboard = Controller()
+
+# Constants
+SCREEN_WIDTH = 800
+SCREEN_HEIGHT = 600
+FONT_SIZE = 48
+NUM_TURNS = 6
+POINTS_LOST = -100
+POINTS_GAINED = 100
+MAX_PLAYERS = 8
+
+# Setting up the display screen
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption('Turn-Based Game')
+
+# Load and set up fonts
+font = pygame.font.Font(None, FONT_SIZE)
+
+# Colors
+WHITE = (255, 255, 255)
+LIGHT_BLUE = (173, 216, 0)
+
+# Load and scale background images
+menu_background = pygame.image.load('/home/miguel-lm10/Pictures/menu.png')
+menu_background = pygame.transform.scale(menu_background, (SCREEN_WIDTH, SCREEN_HEIGHT))
+
+game_background = pygame.image.load('/home/miguel-lm10/Pictures/main.jpg')
+game_background = pygame.transform.scale(game_background, (SCREEN_WIDTH, SCREEN_HEIGHT))
+
+end_background = pygame.image.load('/home/miguel-lm10/Pictures/end_background.jpg')
+end_background = pygame.transform.scale(end_background, (SCREEN_WIDTH, SCREEN_HEIGHT))
+
+# GPIO pin setup
+button_pins = [17, 27, 22, 24]  # Removed GPIO 23
+buttons = [Button(pin, bounce_time=0.5) for pin in button_pins]  # Increase debounce time to 0.5 seconds
+
+# Map buttons to keyboard keys
+key_mappings = {
+    17: Key.enter,  # Button for starting the game
+    27: 'a',        # Button for losing points
+    22: 'd',        # Button for gaining points
+    24: Key.up      # Button for increasing player count in the menu
+}
+
+# Function to handle button press events with delay
+def button_callback(button):
+    key = key_mappings[button.pin.number]
+    keyboard.press(key)
+    keyboard.release(key)
+    time.sleep(0.3)  # Add delay to prevent multiple presses
+
+# Assign callbacks for button presses
+for button in buttons:
+    button.when_pressed = lambda button=button: button_callback(button)
+
+def draw_menu(num_players):
+    screen.blit(menu_background, (0, 0))
+    
+    # Render welcome text
+    welcome_text = font.render('WELCOME', True, LIGHT_BLUE)
+    screen.blit(welcome_text, (SCREEN_WIDTH // 2 - welcome_text.get_width() // 2, 100))
+    
+    # Render player choice text
+    player_text = font.render(f'HOW MANY PLAYERS: {num_players}', True, LIGHT_BLUE)
+    screen.blit(player_text, (SCREEN_WIDTH // 2 - player_text.get_width() // 2, 200))
+    
+    # Render instructions
+    instructions_text = font.render('Press ENTER to start', True, LIGHT_BLUE)
+    screen.blit(instructions_text, (SCREEN_WIDTH // 2 - instructions_text.get_width() // 2, 300))
+    
+    pygame.display.flip()
+
+def draw_game(player_scores, current_player, current_turn):
+    screen.blit(game_background, (0, 0))
+    
+    # Render scores
+    y_offset = 100
+    for player, score in player_scores.items():
+        score_text = font.render(f'Player {player}: {score} points', True, LIGHT_BLUE)
+        screen.blit(score_text, (50, y_offset))
+        y_offset += 50
+    
+    # Render current player and turn
+    turn_text = font.render(f'Player {current_player}\'s Turn: {current_turn}', True, LIGHT_BLUE)
+    screen.blit(turn_text, (50, y_offset))
+    
+    instructions_text = font.render("BEGIN!",True, LIGHT_BLUE)
+    screen.blit(instructions_text, (50, y_offset + 50))
+    
+    pygame.display.flip()
+
+def draw_end_screen(player_scores, winner, is_tie):
+    screen.blit(end_background, (0, 0))
+    
+    # Render game over text
+    game_over_text = font.render('GAME OVER', True, LIGHT_BLUE)
+    screen.blit(game_over_text, (SCREEN_WIDTH // 2 - game_over_text.get_width() // 2, 100))
+    
+    # Render final scores
+    y_offset = 200
+    for player, score in player_scores.items():
+        score_text = font.render(f'Player {player}\'s final total: {score} points', True, LIGHT_BLUE)
+        screen.blit(score_text, (SCREEN_WIDTH // 2 - score_text.get_width() // 2, y_offset))
+        y_offset += 50
+    
+    # Render winner or tie message
+    if is_tie:
+        tie_text = font.render('Ohh, it\'s a tie!!!', True, LIGHT_BLUE)
+        screen.blit(tie_text, (SCREEN_WIDTH // 2 - tie_text.get_width() // 2, y_offset + 50))
+    else:
+        winner_text = font.render(f'Player {winner} wins!!!', True, LIGHT_BLUE)
+        screen.blit(winner_text, (SCREEN_WIDTH // 2 - winner_text.get_width() // 2, y_offset + 50))
+    
+    # Render thank you message
+    thank_you_text = font.render('Please come again!!!!', True, LIGHT_BLUE)
+    screen.blit(thank_you_text, (SCREEN_WIDTH // 2 - thank_you_text.get_width() // 2, y_offset + 100))
+
+    pygame.display.flip()
+
+def main_game(num_players):
+    player_scores = {i: 0 for i in range(1, num_players + 1)}
+    current_player = 1
+    current_turn = 1
+
+    running = True
+
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_a:
+                    player_scores[current_player] += POINTS_LOST
+                elif event.key == pygame.K_d:
+                    player_scores[current_player] += POINTS_GAINED
+                
+                # Move to the next turn or player
+                if current_turn < NUM_TURNS:
+                    current_turn += 1
+                else:
+                    current_turn = 1
+                    if current_player < num_players:
+                        current_player += 1
+                    else:
+                        running = False
+        
+        draw_game(player_scores, current_player, current_turn)
+        pygame.display.flip()
+
+    # Calculate if there's a tie
+    max_score = max(player_scores.values())
+    winners = [player for player, score in player_scores.items() if score == max_score]
+
+    is_tie = len(winners) > 1
+    winner = winners[0] if not is_tie else None
+
+    draw_end_screen(player_scores, winner, is_tie)
+
+    # Wait for the user to quit the game
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+
+def main():
+    num_players = 2  # Default to 2 players
+    menu_active = True
+
+    while menu_active:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
+            elif event.type == pygame.KEYDOWN or any(button.is_pressed for button in buttons):
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_RETURN or buttons[0].is_pressed:  # Button for Enter key
+                    menu_active = False
+                elif event.type == pygame.KEYDOWN and event.key == pygame.K_UP or buttons[3].is_pressed:  # Button for Up key
+                    num_players += 1
+                    if num_players > MAX_PLAYERS:
+                        num_players = 1
+
+        draw_menu(num_players)
+        pygame.display.flip()
+
+    main_game(num_players)
+
+if __name__ == '__main__':
+    main()
+
+
+
